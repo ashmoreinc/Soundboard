@@ -16,11 +16,7 @@ class AudioManager:
         with open(CONTENT_FILE) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=",")
 
-            line_count = 0
             for row in csv_reader:
-                line_count += 1
-                if line_count > PAGE_LIMIT:
-                    break
                 self.Files[row[0]] = row[1]
 
     def PlaySound (self, filename, loop=False):
@@ -39,18 +35,28 @@ class AudioManager:
         """Stop any sound that is currently playing"""
         wsnd.PlaySound(None, wsnd.SND_ASYNC)
 
-    def SoundGenerator (self, max=PAGE_LIMIT):
+    def SoundGenerator (self, max=PAGE_LIMIT, skip=0):
         """Yields filenames that are stored in Files"""
-        if max > len(self.Files): # If there are less file than the max amount, loop through all the files.
+        if max > len(self.Files)-skip:  # If there are less files to loop than the max amount loop through all the files
+            iters = 0
             for title, value in self.Files.items():
+                if iters < skip:
+                    iters += 1
+                    continue
                 yield title
+                iters += 1
+
         else: # Only loop through until there are the max amount displayed.
             iters = 0
             for title, value in self.Files.items():
+                if iters < skip:
+                    iters += 1
+                    continue
                 yield title
                 iters += 1
-                if iters >= max:
+                if iters >= max+skip:
                     break
+
 
 class Window (tk.Tk):
     """This is the main window handler."""
@@ -80,7 +86,6 @@ class Window (tk.Tk):
         # Display the home page
         self.showPage("home")
 
-
     def showPage(self, pageName):
         """This function brings the chosen page to the top."""
         page = self.Pages[pageName]
@@ -90,6 +95,7 @@ class Window (tk.Tk):
 class Home (tk.Frame):
     """This is the home page of the App"""
 
+    # This name will be used to store and navigate between pages
     pageName = "home"
 
     # Rows and columns of sound buttons to be displayed
@@ -135,12 +141,27 @@ class Home (tk.Frame):
         # Made an attribute of the class so that we can access it it and change the visuals later to show it is selected
         self.loopBtn.pack(side="left")
 
-    def loadNames (self):
+        # Page Navigation Buttons
+        self.PageNumber = 0
+
+        nextBtn = tk.Button(controlPanel, text="-->", font=("sans-serif", 24),
+                            command=lambda: self.nextPage())
+        nextBtn.pack(side="right")
+
+        self.PageText = tk.Label(controlPanel, text="Page: 1", font=("sans-serif", 24))
+        self.PageText.pack(side="right")
+
+        prevBtn = tk.Button(controlPanel, text="<--", font=("sans-serif", 24),
+                            command=lambda: self.prevPage())
+        prevBtn.pack(side="right")
+
+    def loadNames (self, pageNumber=0):
         """Loads the names into the buttons"""
         row = 0
         col = 0
+
         # Loop through all the titles and then update the button to reflect the title.
-        for title in self.controller.AudioManager.SoundGenerator():
+        for title in self.controller.AudioManager.SoundGenerator(skip=pageNumber*PAGE_LIMIT):
             self.Buttons[row][col].configure(text=title)
             self.Buttons[row][col].configure(command=lambda t=title: self.playSoundName(t))
             # Increase the column
@@ -152,8 +173,41 @@ class Home (tk.Frame):
                 # if the rows are greater than the max amount for this page, break out the loop as all is filled.
                 if row >= self.ROWS:
                     break
+        else:
+            # Check if it never looped or if the rows have been completed. return False if so
+            # return False shows that this page had no elements
+            if row >= self.ROWS or (col == 0 and row == 0):
+                return False
 
-    def LoopClick (self):
+        # Fill in the rest of the buttons with a placeholder text and clear the command
+        while row < self.ROWS:
+            if col >= self.COLS:
+                col = 0
+                row += 1
+                if row >= self.ROWS:
+                    break
+            self.Buttons[row][col].configure(text="*****")
+            self.Buttons[row][col].configure(command=None)
+            col += 1
+
+        # Return true to show that this page has elements
+        return True
+
+    def nextPage(self):
+        """Try to change page, if it works page number increases"""
+        if self.loadNames(pageNumber=self.PageNumber+1):
+            self.PageNumber += 1
+            self.PageText.configure(text="Page: " + str(self.PageNumber+1))
+
+    def prevPage(self):
+        """If the page isn't already 0, decrease the page and then decrease the page number"""
+        if self.PageNumber >= 1:
+            self.PageNumber -= 1
+            self.PageText.configure(text="Page: " + str(self.PageNumber + 1))
+
+        self.loadNames(pageNumber=self.PageNumber)
+
+    def LoopClick(self):
         """Change the loop variable so that the sounds been looped"""
         # Switch the loop variable to the inverse of its  current state.
         self.doLoop = not self.doLoop
@@ -169,7 +223,7 @@ class Home (tk.Frame):
         self.controller.AudioManager.PlaySoundByTitle(name, loop=self.doLoop)
 
 
-class Other (tk.Frame):
+class Other (tk.Frame):                     # This page will likely be for the adding and removing of files in real-time
     """This is the other page of the App"""
 
     pageName = "other"
