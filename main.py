@@ -1,10 +1,23 @@
+from tkinter import filedialog as tkFileDialog
 import tkinter as tk
+from tkinter.messagebox import askyesno as tkAskYesNo
+from tkinter.messagebox import showinfo as tkShowInfo
+
+
 import winsound as wsnd
 import csv
+
+from tempfile import NamedTemporaryFile
+import shutil
+from os import remove as osRem
 
 
 CONTENT_FILE = "Files/content.csv"
 PAGE_LIMIT = 25
+
+FONT_FAMILY = "sans-serif"
+FONTS = {"xl":(FONT_FAMILY, 24), "l":(FONT_FAMILY, 20), "m":(FONT_FAMILY, 16), "s":(FONT_FAMILY, 12)}
+
 
 class AudioManager:
     """This is the controller for the audio files"""
@@ -13,6 +26,7 @@ class AudioManager:
         self.LoadFiles()
 
     def LoadFiles (self):
+        self.Files = {}
         with open(CONTENT_FILE) as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=",")
 
@@ -57,6 +71,47 @@ class AudioManager:
                 if iters >= max+skip:
                     break
 
+    def DeleteEntry (self, entryName, deleteAudioFile=False):
+        """Delete an entry from the CONTENT_FILE file and then reload the list."""
+
+        # to do this, we create a temporary file and copy every rowe into it from the current file unless that row
+        # has the same name as the given name.
+
+        tempfile = NamedTemporaryFile(delete=False)
+
+        with open(CONTENT_FILE) as csvFile, tempfile:
+            reader = csv.reader(csvFile, delimiter=",")
+
+            # loop through each element in the current file, checking if the name matches the given name
+            # write the row to the temp file if it does match, otherwise ignore that line
+            for row in reader:
+                if row[0] == entryName:
+                    # The name matches, we can delete the file if needed, if not it just dont write to the new file.
+                    if deleteAudioFile:
+                        # Now delete the audio file if it is set too.
+                        osRem("Files/Audio/" + str(row[1]))
+                else:
+                    tempfile.write(bytes(",".join(row) + "\n", encoding='utf-8'))
+
+        shutil.move(tempfile.name, CONTENT_FILE)
+
+        self.LoadFiles()
+
+    def AddEntry (self, file):
+        """Add a audio entry to the file and also move the file to the audio folder, then reload"""
+        # split the filename from the path
+        filename = file.split("/")[-1]
+
+        # Move the file to the audio folder
+        shutil.move(file, "Files/Audio/" + str(filename))
+
+        # Write the new entry to the content file setting the title as the filename without the extension
+        with open(CONTENT_FILE, "a") as content:
+            content.write(filename.replace(".wav", "") + "," + filename)
+
+        # Reload the files list
+        self.LoadFiles()
+
 
 class Window (tk.Tk):
     """This is the main window handler."""
@@ -65,6 +120,8 @@ class Window (tk.Tk):
 
         # Configure window
         self.title("Soundboard")
+        self.geometry("1475x735")
+        self.minsize(1475, 735)
 
         # Create the audio manager object
         self.AudioManager = AudioManager()
@@ -77,7 +134,7 @@ class Window (tk.Tk):
 
         # Create the pages holder and setup pages
         self.Pages = {}
-        for page in (Home, Other):
+        for page in (Home, AddRemoveAudio):
             p = page(container, self)
             self.Pages[page.pageName] = p
 
@@ -90,6 +147,8 @@ class Window (tk.Tk):
         """This function brings the chosen page to the top."""
         page = self.Pages[pageName]
         page.tkraise()
+        page.PageUpdate()
+        page.focus_set()
 
 
 class Home (tk.Frame):
@@ -116,7 +175,7 @@ class Home (tk.Frame):
             this_row = []
             for _col in range(self.COLS):
                 # Create the button and store it in the row placeholder
-                btn = tk.Button(buttonContainer, text=str(_col + _row*5 + 1), font=("sans-serif", 24))
+                btn = tk.Button(buttonContainer, text="*****", width=15, height=3, font=FONTS["xl"])
                 btn.grid(row=_row, column=_col, sticky="nsew")
                 this_row.append(btn)
             # Add the row to the column in the buttons holder.
@@ -126,34 +185,48 @@ class Home (tk.Frame):
         self.loadNames()
 
         # The control panel at the bottom.
-        controlPanel = tk.Frame(self)
+        controlPanel = tk.Frame(self, bg="#757575")
         controlPanel.pack(side="bottom", fill="x")
 
         # Stops any sound from being played.
-        stopBtn = tk.Button(controlPanel, text="STOP", font=("sans-serif", 24),
+        stopBtn = tk.Button(controlPanel, text="STOP", font=FONTS["xl"],
                             command=lambda: self.controller.AudioManager.StopSound())
         stopBtn.pack(side="left")
 
         # Loops the sound.
         self.doLoop = False
-        self.loopBtn = tk.Button(controlPanel, text="Loop", font=("sans-serif", 24),
+        self.loopBtn = tk.Button(controlPanel, text="Loop", font=FONTS["xl"],
                                  command=lambda:self.LoopClick())
         # Made an attribute of the class so that we can access it it and change the visuals later to show it is selected
         self.loopBtn.pack(side="left")
 
+        # Edit Audio Files Page
+        edit = tk.Button(controlPanel, text="Edit Audio Files", font=FONTS["xl"],
+                         command=lambda: self.controller.showPage("addremaudio"))
+        edit.pack(side="left")
+
         # Page Navigation Buttons
         self.PageNumber = 0
 
-        nextBtn = tk.Button(controlPanel, text="-->", font=("sans-serif", 24),
+        nextBtn = tk.Button(controlPanel, text="-->", font=FONTS["xl"],
                             command=lambda: self.nextPage())
         nextBtn.pack(side="right")
 
-        self.PageText = tk.Label(controlPanel, text="Page: 1", font=("sans-serif", 24))
+        self.PageText = tk.Label(controlPanel, text="Page: 1", bg="#757575", font=FONTS["xl"])
         self.PageText.pack(side="right")
 
-        prevBtn = tk.Button(controlPanel, text="<--", font=("sans-serif", 24),
+        prevBtn = tk.Button(controlPanel, text="<--", font=FONTS["xl"],
                             command=lambda: self.prevPage())
         prevBtn.pack(side="right")
+
+        self.bind("<Left>", lambda event: self.__prevPageBind(event))
+        self.bind("<Right>", lambda event: self.__nextPageBind(event))
+
+    def PageUpdate(self):
+        """Run an entire page update, mostly used by the controller when changing pages."""
+
+        self.PageNumber = 0
+        self.loadNames(self.PageNumber)
 
     def loadNames (self, pageNumber=0):
         """Loads the names into the buttons"""
@@ -162,7 +235,12 @@ class Home (tk.Frame):
 
         # Loop through all the titles and then update the button to reflect the title.
         for title in self.controller.AudioManager.SoundGenerator(skip=pageNumber*PAGE_LIMIT):
-            self.Buttons[row][col].configure(text=title)
+            if len(title) > 19:
+                dispTitle = title[0:17] + "..."
+            else:
+                dispTitle = title
+
+            self.Buttons[row][col].configure(text=dispTitle)
             self.Buttons[row][col].configure(command=lambda t=title: self.playSoundName(t))
             # Increase the column
             col += 1
@@ -187,11 +265,19 @@ class Home (tk.Frame):
                 if row >= self.ROWS:
                     break
             self.Buttons[row][col].configure(text="*****")
-            self.Buttons[row][col].configure(command=None)
+            self.Buttons[row][col].configure(command=lambda: None)
             col += 1
 
         # Return true to show that this page has elements
         return True
+
+    def __nextPageBind(self, event):
+        """function for the keybind"""
+        self.nextPage()
+
+    def __prevPageBind(self, event):
+        """function for the keybind"""
+        self.prevPage()
 
     def nextPage(self):
         """Try to change page, if it works page number increases"""
@@ -216,22 +302,137 @@ class Home (tk.Frame):
         if self.doLoop:
             self.loopBtn.configure(bg="#ee0000")
         else:
-            self.loopBtn.configure(bg="#ffffff")
+            self.loopBtn.configure(bg="#eeeeee")
 
     def playSoundName (self, name):
         """Runs the audio managers play sound function with the name of the audio"""
         self.controller.AudioManager.PlaySoundByTitle(name, loop=self.doLoop)
 
 
-class Other (tk.Frame):                     # This page will likely be for the adding and removing of files in real-time
+class AddRemoveAudio (tk.Frame):
     """This is the other page of the App"""
 
-    pageName = "other"
+    pageName = "addremaudio"
+
+    maxPerPage = 13
 
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
 
         self.controller = controller
+
+        # Content frames
+        contentFrame = tk.Frame(self)
+        contentFrame.pack(side="top", fill="both")
+
+        # Navigation
+        navigationPanel = tk.Frame(contentFrame)
+        navigationPanel.pack(side="top", fill="x")
+
+        pageBack = tk.Button(navigationPanel, text="<--", width=15, bg="#aaaaaa", font=FONTS["xl"],
+                                command=lambda: self.prevPage())
+        pageBack.pack(side="left")
+
+        self.PageNumber = 0
+
+        self.PageText = tk.Label(navigationPanel, text="Page: " + str(self.PageNumber + 1), font=FONTS["xl"])
+        self.PageText.pack(side="left")
+
+        pageForward = tk.Button(navigationPanel, text="-->", width=15, bg="#aaaaaa", font=FONTS["xl"],
+                                command=lambda: self.nextPage())
+        pageForward.pack(side="right")
+
+        # Control Buttons
+        self.buttonsPanel = tk.Frame(contentFrame)
+        self.buttonsPanel.pack(side="top", pady=10)
+
+        self.loadButtons()
+
+        # The bottom control panel
+        controlPanel = tk.Frame(self, bg="#757575")
+        controlPanel.pack(side="bottom", fill="x")
+
+        # Add button to add a new audio
+        add = tk.Button(controlPanel, text="Add New Audio", font=FONTS["xl"],
+                        command=lambda: self.AddElement())
+        add.pack(side="left")
+
+        # Back to the sound buttons page
+        bkButton = tk.Button(controlPanel, text="Back", font=FONTS["xl"],
+                             command=lambda: self.controller.showPage("home"))
+        bkButton.pack(side="right")
+
+    def PageUpdate(self):
+        """Run an entire page update, mostly used by the controller when changing pages."""
+
+        self.PageNumber = 0
+        self.loadButtons(self.PageNumber)
+
+    def loadButtons (self, pageNumber=0):
+        """load the names of the buttons"""
+
+        # Clear all the current elements
+        for widget in self.buttonsPanel.winfo_children():
+            widget.destroy()
+
+        row = 0
+
+        # Loop through all the available titles for the given page and create a label and relevant buttons
+        for title in self.controller.AudioManager.SoundGenerator(max=self.maxPerPage, skip=pageNumber*self.maxPerPage):
+            tk.Label(self.buttonsPanel, text=title, font=FONTS["l"]).grid(row=row, column=0, sticky="nsew")
+
+            tk.Button(self.buttonsPanel, text="Remove", font=FONTS["m"],
+                      command=lambda t=title: self.DeleteElement(t)).grid(row=row, column=1, sticky="nsew")
+            tk.Button(self.buttonsPanel, text="Rename", font=FONTS["m"]).grid(row=row, column=2, sticky="nsew")
+            row += 1
+
+        # Tell the user than there is no audio files if none have been found!
+        if pageNumber == 0 and row == 0:
+            txt = "No audio files are available.\nAdd one now by pressing the 'Add new audio' button below."
+            tk.Label(self.buttonsPanel,
+                text=txt).grid(row=0, column=0, columnspan=3)
+            return False
+        elif row == 0:
+            return False
+
+        return True
+
+    def AddElement (self):
+        """Add a new audio entry"""
+        file = tkFileDialog.askopenfilename(title="Select audio file", filetypes=(("Wav files", "*.wav"),))
+
+        self.controller.AudioManager.AddEntry(file)
+
+    def DeleteElement (self, elementName):
+        """Deletes an audio entry from the content file."""
+
+        # Ask the user if they are sure.
+        result = tkAskYesNo("Delete " + elementName, "Are you sure you want to delete {0}?".format(elementName), icon="warning")
+        if result:
+            self.controller.AudioManager.DeleteEntry(elementName)
+        else:
+            tkShowInfo("Update!", "{0} has NOT been deleted!".format(elementName))
+
+        self.loadButtons(pageNumber=self.PageNumber)
+
+    # TODO add the rename function
+
+    def nextPage (self):
+        """Move to the next page if there are elements there."""
+        if self.loadButtons(self.PageNumber+1):
+            self.PageNumber += 1
+        else:
+            self.loadButtons(self.PageNumber)
+
+        self.PageText.configure(text="Page: " + str(self.PageNumber+1))
+
+    def prevPage (self):
+        """Move to the previous page if not already on the 1st (0th) page"""
+        if self.PageNumber > 0:
+            self.PageNumber -= 1
+            self.loadButtons(self.PageNumber)
+        self.PageText.configure(text="Page: " + str(self.PageNumber+1))
+
 
 
 if __name__ == "__main__":
