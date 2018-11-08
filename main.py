@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter.messagebox import askyesno as tkAskYesNo
 from tkinter.messagebox import showinfo as tkShowInfo
 
+import widgets
 
 import winsound as wsnd
 import csv
@@ -18,18 +19,21 @@ PAGE_LIMIT = 25
 FONT_FAMILY = "sans-serif"
 FONTS = {"xl":(FONT_FAMILY, 24), "l":(FONT_FAMILY, 20), "m":(FONT_FAMILY, 16), "s":(FONT_FAMILY, 12)}
 
-
 class AudioManager:
     """This is the controller for the audio files"""
     def __init__ (self):
-        self.Files = {} # Name | Filename
+        self.Files = {}  # Name | Filename
         self.LoadFiles()
 
     def LoadFiles (self):
+        """Clear the files list and then read from the file to repopulate it."""
         self.Files = {}
+        # Open file
         with open(CONTENT_FILE) as csv_file:
+            # Initialise the CSV file reader
             csv_reader = csv.reader(csv_file, delimiter=",")
 
+            # Loop through and save the contents to the Files attribute
             for row in csv_reader:
                 self.Files[row[0]] = row[1]
 
@@ -42,6 +46,7 @@ class AudioManager:
 
     def PlaySoundByTitle (self, title, loop=False):
         """Gets the filename when given a title and plays the file"""
+        # Get file name, then run the PlaySound Method
         filename = self.Files[title]
         self.PlaySound(filename, loop=loop)
 
@@ -52,15 +57,17 @@ class AudioManager:
     def SoundGenerator (self, max=PAGE_LIMIT, skip=0):
         """Yields filenames that are stored in Files"""
         if max > len(self.Files)-skip:  # If there are less files to loop than the max amount loop through all the files
+            # Iters is used to skip the given amount of iterations
             iters = 0
             for title, value in self.Files.items():
-                if iters < skip:
+                if iters < skip:  # Skip if we haven't passed the skip amount.
                     iters += 1
                     continue
                 yield title
                 iters += 1
 
         else: # Only loop through until there are the max amount displayed.
+            # Iters is used to see if we have gone over the max amount.
             iters = 0
             for title, value in self.Files.items():
                 if iters < skip:
@@ -68,18 +75,20 @@ class AudioManager:
                     continue
                 yield title
                 iters += 1
+                # Exit if we have gone over the max amount.
                 if iters >= max+skip:
                     break
 
     def DeleteEntry (self, entryName, deleteAudioFile=False):
         """Delete an entry from the CONTENT_FILE file and then reload the list."""
 
-        # to do this, we create a temporary file and copy every rowe into it from the current file unless that row
+        # to do this, we create a temporary file and copy every row into it from the current file unless that row
         # has the same name as the given name.
 
-        tempfile = NamedTemporaryFile(delete=False)
+        tempfile = NamedTemporaryFile(delete=False, mode="w")
 
-        with open(CONTENT_FILE) as csvFile, tempfile:
+        # Open csv file and initialise the reader
+        with open(CONTENT_FILE) as csvFile:
             reader = csv.reader(csvFile, delimiter=",")
 
             # loop through each element in the current file, checking if the name matches the given name
@@ -91,25 +100,57 @@ class AudioManager:
                         # Now delete the audio file if it is set too.
                         osRem("Files/Audio/" + str(row[1]))
                 else:
-                    tempfile.write(bytes(",".join(row) + "\n", encoding='utf-8'))
+                    # Write the data to the temporary file
+                    tempfile.write(",".join(row) + "\n")
 
+        # Close the temp file and then move it
+        tempfile.close()
         shutil.move(tempfile.name, CONTENT_FILE)
 
+        # Re-load the files
         self.LoadFiles()
 
-    def AddEntry (self, file):
+    def AddEntry (self, files: tuple):
         """Add a audio entry to the file and also move the file to the audio folder, then reload"""
-        # split the filename from the path
-        filename = file.split("/")[-1]
+        for file in files:
+            # split the filename from the path
+            filename = file.split("/")[-1]
 
-        # Move the file to the audio folder
-        shutil.move(file, "Files/Audio/" + str(filename))
+            # Move the file to the audio folder
+            shutil.move(file, "Files/Audio/" + str(filename))
 
-        # Write the new entry to the content file setting the title as the filename without the extension
-        with open(CONTENT_FILE, "a") as content:
-            content.write(filename.replace(".wav", "") + "," + filename)
+            # Write the new entry to the content file setting the title as the filename without the extension
+            with open(CONTENT_FILE, "a") as content:
+                content.write(filename.replace(".wav", "") + "," + filename + "\n")
 
         # Reload the files list
+        self.LoadFiles()
+
+    def RenameEntry (self, curName, newName):
+        """Rename a current entry to a new name"""
+
+        # to do this, a temp file is created, then copy every row from the current file into it, changing the value if
+        # the title matches
+
+        tempfile = NamedTemporaryFile(delete=False, mode="w")
+
+        # Open csv file and initialise the reader
+        with open(CONTENT_FILE) as csvFile:
+            reader = csv.reader(csvFile, delimiter=",")
+
+            # loop through each element, add if it does not match the curName and switch if it does match
+            for row in reader:
+                if row[0] == curName:
+                    # The names match so switch the values
+                    row[0] = newName
+                # Write to the temporary file
+                tempfile.write(",".join(row) + "\n")
+
+        # Close the temp file and then over right the CONTENT FILE with it
+        tempfile.close()
+        shutil.move(tempfile.name, CONTENT_FILE)
+
+        # Re-load the files
         self.LoadFiles()
 
 
@@ -329,6 +370,7 @@ class AddRemoveAudio (tk.Frame):
         navigationPanel = tk.Frame(contentFrame)
         navigationPanel.pack(side="top", fill="x")
 
+        # Back button, page number and forward button
         pageBack = tk.Button(navigationPanel, text="<--", width=15, bg="#aaaaaa", font=FONTS["xl"],
                                 command=lambda: self.prevPage())
         pageBack.pack(side="left")
@@ -364,11 +406,11 @@ class AddRemoveAudio (tk.Frame):
 
     def PageUpdate(self):
         """Run an entire page update, mostly used by the controller when changing pages."""
-
+        # Reset the page number to the start and then re-load the buttons
         self.PageNumber = 0
         self.loadButtons(self.PageNumber)
 
-    def loadButtons (self, pageNumber=0):
+    def loadButtons(self, pageNumber=0):
         """load the names of the buttons"""
 
         # Clear all the current elements
@@ -379,11 +421,17 @@ class AddRemoveAudio (tk.Frame):
 
         # Loop through all the available titles for the given page and create a label and relevant buttons
         for title in self.controller.AudioManager.SoundGenerator(max=self.maxPerPage, skip=pageNumber*self.maxPerPage):
+            # Audio title text
             tk.Label(self.buttonsPanel, text=title, font=FONTS["l"]).grid(row=row, column=0, sticky="nsew")
 
+            # Remove Button
             tk.Button(self.buttonsPanel, text="Remove", font=FONTS["m"],
                       command=lambda t=title: self.DeleteElement(t)).grid(row=row, column=1, sticky="nsew")
-            tk.Button(self.buttonsPanel, text="Rename", font=FONTS["m"]).grid(row=row, column=2, sticky="nsew")
+            # Rename Button
+            tk.Button(self.buttonsPanel, text="Rename", font=FONTS["m"],
+                      command=lambda t=title: self.renameElement(t)).grid(row=row, column=2, sticky="nsew")
+
+            # Increase the row
             row += 1
 
         # Tell the user than there is no audio files if none have been found!
@@ -393,46 +441,77 @@ class AddRemoveAudio (tk.Frame):
                 text=txt).grid(row=0, column=0, columnspan=3)
             return False
         elif row == 0:
+            # Go back a page as there is nothing on this page.
+            self.prevPage()
             return False
-
+        # Return value indicates whether somethings been found or not
         return True
 
-    def AddElement (self):
+    def AddElement(self):
         """Add a new audio entry"""
-        file = tkFileDialog.askopenfilename(title="Select audio file", filetypes=(("Wav files", "*.wav"),))
+        # Get the file(s) from the user.
+        file = tkFileDialog.askopenfilenames(title="Select audio file(s)", filetypes=(("Wav files", "*.wav"),))
 
+        # Add the file(s)
         self.controller.AudioManager.AddEntry(file)
 
-    def DeleteElement (self, elementName):
+        # Re-load the buttons
+        self.loadButtons(self.PageNumber)
+
+    def DeleteElement(self, elementName):
         """Deletes an audio entry from the content file."""
 
         # Ask the user if they are sure.
-        result = tkAskYesNo("Delete " + elementName, "Are you sure you want to delete {0}?".format(elementName), icon="warning")
+        result = tkAskYesNo("Delete " + elementName,
+                            "Are you sure you want to delete {0}?".format(elementName), icon="warning")
+        # If the user confirms they are sure, run the cancel, otherwise notify them that nothing was done.
         if result:
             self.controller.AudioManager.DeleteEntry(elementName)
         else:
             tkShowInfo("Update!", "{0} has NOT been deleted!".format(elementName))
 
+        # Re-load the buttons
         self.loadButtons(pageNumber=self.PageNumber)
 
-    # TODO add the rename function
+    def renameElement(self, elementName):
+        """Get the new name of an item and change it"""
 
-    def nextPage (self):
+        # Update the UI then get the user inp and wait for them to interact with the pop up.
+        self.controller.update()
+        inp = widgets.GetInput(self.controller, question="New name: ", font=FONTS["l"])
+        self.controller.wait_window(inp.top)
+
+        # If there is no input data, then user cancelled. If not run the rename function in AudioManager
+        if inp.Data is None:
+            return None
+        else:
+            self.controller.AudioManager.RenameEntry(elementName, inp.Data)
+
+        # Re-load buttons
+        self.loadButtons(self.PageNumber)
+
+    def nextPage(self):
         """Move to the next page if there are elements there."""
+        # Update the buttons with the new page number, if it is successful, update the page number
         if self.loadButtons(self.PageNumber+1):
             self.PageNumber += 1
         else:
+            # If you couldn't update, re-load the current page
             self.loadButtons(self.PageNumber)
 
+        # Update the page number text value
         self.PageText.configure(text="Page: " + str(self.PageNumber+1))
 
-    def prevPage (self):
+    def prevPage(self):
         """Move to the previous page if not already on the 1st (0th) page"""
+        # If the pagew number is greater than the minimum (0), then update it to be lower
         if self.PageNumber > 0:
             self.PageNumber -= 1
+            # Re-load the buttons
             self.loadButtons(self.PageNumber)
-        self.PageText.configure(text="Page: " + str(self.PageNumber+1))
 
+        # Update the page number text value
+        self.PageText.configure(text="Page: " + str(self.PageNumber+1))
 
 
 if __name__ == "__main__":
