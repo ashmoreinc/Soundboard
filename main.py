@@ -153,6 +153,60 @@ class AudioManager:
         # Re-load the files
         self.LoadFiles()
 
+    def MoveEntryUp(self, title):
+        """Moves the audio file entry with the given title up one slot"""
+
+        # Loop through the file until we find an element with the given title
+        with open(CONTENT_FILE) as csvFile:
+            reader = csv.reader(csvFile, delimiter=",")
+
+            # Save the line that the element was on and the data of that line
+            line = 0
+            rowData = []
+            for row in reader:
+                if row[0] == title:
+                    rowData = row
+                    break
+
+                line += 1
+
+        # If the file isn't the first element, then do the swapping
+        if line > 0:
+            # Create a temp file to write too.
+            tempfile = NamedTemporaryFile(mode="w", delete=False)
+
+            with open(CONTENT_FILE) as csvFile:
+                reader = csv.reader(csvFile, delimiter=",")
+
+                # Deduct 1 from the swapline as this is the line we need to swap with.
+                swapLine = line - 1
+                line = - 1  # Line starts at -1 as we update the line before running
+                # IDK why but it wasn't working when line += 1 was at the end of the loop
+
+                for row in reader:
+                    line += 1
+                    # If we are on the swap line, then right the saved data, then the data that it is swapped with
+                    if line == swapLine:
+                        tempfile.write(",".join(rowData) + "\n")
+                        tempfile.write(",".join(row) + "\n")
+                    elif line == swapLine + 1:
+                        # Skip the line the data was originally on
+                        continue
+                    else:
+                        # Just right the data as this didn't need to be swapped out.
+                        tempfile.write(",".join(row) + "\n")
+
+            # Close file and then overwrite the CONTENT_FILEW
+            tempfile.close()
+            shutil.move(tempfile.name, CONTENT_FILE)
+
+        # Re-load the files
+        self.LoadFiles()
+
+    def MoveEntryDown(self, title):
+        """Moves the audio file entry with the given title up one slot"""
+        pass
+
 
 class Window (tk.Tk):
     """This is the main window handler."""
@@ -431,6 +485,12 @@ class AddRemoveAudio (tk.Frame):
             tk.Button(self.buttonsPanel, text="Rename", font=FONTS["m"],
                       command=lambda t=title: self.renameElement(t)).grid(row=row, column=2, sticky="nsew")
 
+            # Move up button
+            tk.Button(self.buttonsPanel, text="Move Up", font=FONTS["m"],
+                      command=lambda t=title: self.MoveElementUp(t)).grid(row=row, column=3, sticky="nsew")
+            # Move down button
+            tk.Button(self.buttonsPanel, text="Move Down", font=FONTS["m"]).grid(row=row, column=4, sticky="nsew")
+
             # Increase the row
             row += 1
 
@@ -446,6 +506,11 @@ class AddRemoveAudio (tk.Frame):
             return False
         # Return value indicates whether somethings been found or not
         return True
+
+    def MoveElementUp (self, title):
+        """Move element up button press event"""
+        self.controller.AudioManager.MoveEntryUp(title)
+        self.PageUpdate()
 
     def AddElement(self):
         """Add a new audio entry"""
