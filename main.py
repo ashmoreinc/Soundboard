@@ -19,6 +19,7 @@ PAGE_LIMIT = 25
 FONT_FAMILY = "sans-serif"
 FONTS = {"xl":(FONT_FAMILY, 24), "l":(FONT_FAMILY, 20), "m":(FONT_FAMILY, 16), "s":(FONT_FAMILY, 12)}
 
+
 class AudioManager:
     """This is the controller for the audio files"""
     def __init__ (self):
@@ -153,7 +154,7 @@ class AudioManager:
         # Re-load the files
         self.LoadFiles()
 
-    def MoveEntryUp(self, title):
+    def MoveEntryUp (self, title):
         """Moves the audio file entry with the given title up one slot"""
 
         # Loop through the file until we find an element with the given title
@@ -196,7 +197,7 @@ class AudioManager:
                         # Just right the data as this didn't need to be swapped out.
                         tempfile.write(",".join(row) + "\n")
 
-            # Close file and then overwrite the CONTENT_FILEW
+            # Close file and then overwrite the CONTENT_FILE
             tempfile.close()
             shutil.move(tempfile.name, CONTENT_FILE)
 
@@ -205,7 +206,45 @@ class AudioManager:
 
     def MoveEntryDown(self, title):
         """Moves the audio file entry with the given title up one slot"""
-        pass
+
+        with open(CONTENT_FILE) as csvFile:
+            reader = csv.reader(csvFile, delimiter=",")
+
+            iters = 0
+            rowData = []
+
+            for row in reader:
+                if row[0] == title:
+                    rowData = row
+                    break
+                iters += 1
+
+        with open(CONTENT_FILE) as fle: rows = sum(1 for _ in fle)
+
+        # If the item found isn't the last element then run
+        if iters < rows - 1:  # -1 as the rows needs to become the index value
+            tempfile = NamedTemporaryFile(mode="w", delete=False)
+            with  open(CONTENT_FILE)  as csvFile:
+                reader = csv.reader(csvFile, delimiter=",")
+
+                # -1 because it didn't work for move up so i ain't risking the hassle this time
+                line = -1
+
+                for row in reader:
+                    line += 1
+                    if line == iters:
+                        continue
+                    elif line == iters + 1:
+                        tempfile.write(",".join(row) + "\n")
+                        tempfile.write(",".join(rowData) + "\n")
+                    else:
+                        tempfile.write(",".join(row) + "\n")
+
+            tempfile.close()
+            shutil.move(tempfile.name, CONTENT_FILE)
+
+        # Re-load the files
+        self.LoadFiles()
 
 
 class Window (tk.Tk):
@@ -489,7 +528,8 @@ class AddRemoveAudio (tk.Frame):
             tk.Button(self.buttonsPanel, text="Move Up", font=FONTS["m"],
                       command=lambda t=title: self.MoveElementUp(t)).grid(row=row, column=3, sticky="nsew")
             # Move down button
-            tk.Button(self.buttonsPanel, text="Move Down", font=FONTS["m"]).grid(row=row, column=4, sticky="nsew")
+            tk.Button(self.buttonsPanel, text="Move Down", font=FONTS["m"],
+                      command=lambda t=title: self.MoveElementDown(t)).grid(row=row, column=4, sticky="nsew")
 
             # Increase the row
             row += 1
@@ -510,6 +550,11 @@ class AddRemoveAudio (tk.Frame):
     def MoveElementUp (self, title):
         """Move element up button press event"""
         self.controller.AudioManager.MoveEntryUp(title)
+        self.PageUpdate()
+
+    def MoveElementDown (self, title):
+        """Move the element with the given title down event"""
+        self.controller.AudioManager.MoveEntryDown(title)
         self.PageUpdate()
 
     def AddElement(self):
