@@ -154,6 +154,19 @@ class AudioManager:
         # Re-load the files
         self.LoadFiles()
 
+    def DeleteAllEntries(self):
+        """Creates an empty file and replaces the current one with it."""
+
+        # Create a temp file that is empty
+        tempfile = NamedTemporaryFile(mode="w", delete=False)
+        tempfile.close()
+
+        # Over write the current file with the empty file
+        shutil.move(tempfile.name, CONTENT_FILE)
+
+        # Re-load the files
+        self.LoadFiles()
+
     def MoveEntryUp (self, title):
         """Moves the audio file entry with the given title up one slot"""
 
@@ -492,6 +505,11 @@ class AddRemoveAudio (tk.Frame):
                         command=lambda: self.AddElement())
         add.pack(side="left")
 
+        # Delete all button
+        delAll = tk.Button(controlPanel, text="Clear List", bg="#ff2222", font=FONTS["xl"],
+                           command=lambda: self.DeleteAllElements())
+        delAll.pack(side="left")
+
         # Back to the sound buttons page
         bkButton = tk.Button(controlPanel, text="Back", font=FONTS["xl"],
                              command=lambda: self.controller.showPage("home"))
@@ -557,6 +575,21 @@ class AddRemoveAudio (tk.Frame):
         self.controller.AudioManager.MoveEntryDown(title)
         self.PageUpdate()
 
+    def DeleteAllElements (self):
+        """Remove all elements after confirming the user wants too."""
+
+        # Ask the user if they are sure.
+        result = tkAskYesNo("Delete ",
+                            "Are you sure you want to delete all elements?\nThis can NOT be undone.", icon="warning")
+
+        if result:  # Run the delete function if user confirms
+            self.controller.AudioManager.DeleteAllEntries()
+        else:  # Tell the user nothing has happened if the cancel
+            tkShowInfo("Update!", "Nothing has been deleted!")
+
+        # Update the page
+        self.PageUpdate()
+
     def AddElement(self):
         """Add a new audio entry"""
         # Get the file(s) from the user.
@@ -573,7 +606,7 @@ class AddRemoveAudio (tk.Frame):
 
         # Ask the user if they are sure.
         result = tkAskYesNo("Delete " + elementName,
-                            "Are you sure you want to delete {0}?".format(elementName), icon="warning")
+                            "Are you sure you want to delete {0}?\nThis can not be undone.".format(elementName), icon="warning")
         # If the user confirms they are sure, run the cancel, otherwise notify them that nothing was done.
         if result:
             self.controller.AudioManager.DeleteEntry(elementName)
@@ -581,7 +614,7 @@ class AddRemoveAudio (tk.Frame):
             tkShowInfo("Update!", "{0} has NOT been deleted!".format(elementName))
 
         # Re-load the buttons
-        self.loadButtons(pageNumber=self.PageNumber)
+        self.PageUpdate()
 
     def renameElement(self, elementName):
         """Get the new name of an item and change it"""
